@@ -497,7 +497,7 @@ function finishSheet(){
       const exercises=draft.exercises.map(e=>({name:e.name,sets:e.sets.filter(x=>x.done).map(x=>({kg:n(x.kg),reps:n(x.reps)}))})).filter(e=>e.name&&e.sets.length);
       if(!exercises.length){toast("Valide au moins une série (✓)",true);return}
       sessions.push({id:"s"+Date.now(),date:date.value||iso(Date.now()),duration:n(dur.value),type:nameIn.value.trim()||autoName(exercises),note:(draft.note||"").trim(),exercises,createdAt:Date.now()});
-      saveAll();if(draft.progDay!=null&&prefs.profile){prefs.progIdx=draft.progDay+1;store.set(PREFS,prefs)}const lvBefore=levelInfo(sessions.slice(0,-1)).level,lv=levelInfo().level;draft=null;saveDraft();clearInterval(restI);$("#rest").hidden=true;closeSheet();go("historique");toast(lv>lvBefore?`Niveau ${lv} atteint ! ⚡`:"Séance enregistrée ✓")}},"Enregistrer"),
+      saveAll();if(draft.progDay!=null&&prefs.profile){prefs.progIdx=draft.progDay+1;store.set(PREFS,prefs)}if(draft.testDay!=null){prefs.testDone=[...new Set([...(prefs.testDone||[]),draft.testDay])];store.set(PREFS,prefs)}const lvBefore=levelInfo(sessions.slice(0,-1)).level,lv=levelInfo().level;draft=null;saveDraft();clearInterval(restI);$("#rest").hidden=true;closeSheet();go("historique");toast(lv>lvBefore?`Niveau ${lv} atteint ! ⚡`:"Séance enregistrée ✓")}},"Enregistrer"),
     h("button",{type:"button",class:"btn ghost block",onclick:closeSheet},"Continuer la séance"),discard));
 }
 
@@ -710,9 +710,28 @@ function suggest(name,repsLow){
   if(!r1&&EST[name]){const [ref,f]=EST[name];const b=ref==="bench"?baseMax("bench"):ref==="squat"?baseMax("squat"):ref==="dead"?baseMax("dead"):baseMax("ohp")||baseMax("bench")*.62;if(b)r1=b*f}
   if(!r1)return null;const w=r1/(1+(repsLow+2)/30),step=meta(name).eq==="Haltères"?2:2.5;return Math.max(step,Math.round(w/step)*step)}
 const WD=["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+/* Semaine de test : chaque machine une fois, pour mesurer tes charges habituelles. [exercice, séries, reps cibles] */
+const TEST=[
+ ["Jour 1 · Poussée",[["Développé couché",2,10],["Développé incliné haltères",2,10],["Presse à pectoraux (chest press)",2,10],["Butterfly (pec deck)",2,12],["Développé épaules haltères",2,10],["Presse épaules (machine)",2,10],["Élévations latérales haltères",2,12],["Extension triceps à la poulie (corde)",2,12]]],
+ ["Jour 2 · Jambes",[["Squat",2,8],["Presse à cuisses",2,10],["Leg extension",2,12],["Leg curl assis",2,10],["Leg curl allongé",2,10],["Soulevé de terre roumain",2,10],["Hip thrust",2,10],["Mollets debout (machine)",2,12],["Mollets assis (machine)",2,12]]],
+ ["Jour 3 · Tirage",[["Tractions",2,8],["Tirage vertical (poulie haute)",2,10],["Tirage vertical (machine)",2,10],["Tirage horizontal assis",2,10],["Rowing barre",2,10],["Rowing haltère à un bras",2,10],["Oiseau (reverse pec deck)",2,12],["Face pull",2,12],["Curl barre",2,10],["Curl marteau",2,10]]],
+ ["Jour 4 · Complément",[["Développé militaire",2,8],["Presse inclinée (machine)",2,10],["Écarté à la poulie vis-à-vis",2,12],["Élévations latérales à la poulie",2,12],["Dips",2,8],["Barre au front",2,10],["Hack squat",2,10],["Fentes bulgares",2,10],["Abducteurs (machine)",2,15],["Pull-over à la poulie",2,12],["Crunch à la poulie",2,12],["Gainage",2,45]]]];
+function testCard(){
+  const done=new Set(prefs.testDone||[]),all=done.size>=TEST.length;
+  const c=h("section",{class:"card"+(all?"":" hero")},all?null:h("div",{class:"bar",html:ICON.bar}),
+    h("div",{class:"eyebrow"},all?"Phase de test terminée ✓":`Phase de test · ${done.size}/${TEST.length} jours faits`),
+    h("h2",{style:"font-size:28px"},"Semaine de test"),
+    h("div",{class:"muted small"},all?"Tes charges sont enregistrées : les charges conseillées du programme sont maintenant calculées à partir de tes vraies performances.":"Fais chaque machine avec ta charge habituelle : 1 série d'échauffement légère (non notée), puis 2 séries vers le nombre de reps indiqué, en gardant 1 à 2 reps en réserve. Valide (✓) les 2 séries avec la charge et les reps exactes."));
+  TEST.forEach(([title,exs],i)=>{const ok=done.has(i);
+    c.append(h("div",{class:"tmpl"},h("div",{},h("b",{},(ok?"✓ ":"")+title),h("span",{},exs.map(e=>e[0].replace(/ \(.*\)/,"")).join(", "))),
+      h("button",{type:"button",class:"btn sm"+(ok?" ghost":""),onclick:()=>{if(draft){toast("Termine d'abord ta séance en cours",true);go("seance");return}
+        startSession(exs.map(([nm,sets,r])=>({name:nm,sets:Array.from({length:sets},()=>({kg:"",reps:"",done:false,treps:r}))})),"Test · "+title.split(" · ")[1],null);draft.testDay=i;saveDraft()}},ok?"Refaire":"Démarrer")))});
+  return c}
 function vProgram(v){
   head("Mon programme","Programme");
   const p=prof();
+  const testFinished=(prefs.testDone||[]).length>=TEST.length;
+  if(!testFinished)v.append(testCard());
   if(!p){v.append(h("div",{class:"card"},h("h2",{},"Crée ton programme"),h("div",{class:"muted small"},"Indique ton poids, ta taille, tes charges max et le nombre de séances par semaine. Le programme et les charges conseillées sont calculés pour toi."),h("button",{type:"button",class:"btn block",onclick:profileSheet},"Remplir mon profil")));return}
   const sp=SPLITS[p.days]||SPLITS[4],idx=(prefs.progIdx||0)%sp.plan.length;
   const bw=n(p.weight),prot=[Math.round(bw*1.6),Math.round(bw*2.2)];
@@ -733,6 +752,7 @@ function vProgram(v){
         h("div",{class:"sr"},`${sets} × ${reps}${md.k==="t"?" s":""}`,h("small",{},w?`≈ ${fmt1(w)} kg`:md.k==="bw"?"poids du corps":md.k==="t"?"":"à tester"))))});
     card.append(h("div",{class:"pex",style:"grid-template-columns:1fr"},h("span",{},"+ 5–10 min d'étirements en fin de séance (souplesse)")));
     v.append(card)});
+  if(testFinished)v.append(testCard());
   v.append(h("section",{class:"card"},h("h2",{},"Comment progresser"),
     h("div",{class:"small",style:"display:grid;gap:8px"},
       h("div",{},"• Garde 1 à 2 répétitions en réserve sur chaque série, sans aller à l'échec."),
